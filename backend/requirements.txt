@@ -1,0 +1,23 @@
+# ── Serveur HTTP & WebSocket ──────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# ── WebRTC ────────────────────────────────────────────────────────────────────
+aiortc==1.9.0
+aiohttp==3.9.5
+
+# ── Vision / ML ───────────────────────────────────────────────────────────────
+ultralytics==8.2.18
+torch==2.3.0
+torchvision==0.18.0
+onnx==1.16.1
+onnxruntime==1.18.0
+# opencv-python est installé automatiquement par ultralytics (ne pas dupliquer)
+numpy==1.26.4
+Pillow==10.3.0
+
+# ── Utilitaires ───────────────────────────────────────────────────────────────
+av==12.1.0          # dépendance aiortc pour le décodage vidéo
+pydantic==2.7.1
+python-dotenv==1.0.1
