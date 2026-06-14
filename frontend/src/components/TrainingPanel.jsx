@@ -7,6 +7,7 @@
  */
 
 import React, { useState } from 'react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { useTraining } from '../hooks/useTraining'
 
 const CIFAR10_CLASSES = [
@@ -38,6 +39,7 @@ export function TrainingPanel() {
     currentEpoch,
     totalEpochs,
     metrics,
+    history,
     message,
     error,
     loading,
@@ -310,6 +312,25 @@ export function TrainingPanel() {
                     <div className="metric-label">LR actuel</div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Historique - Graphique */}
+            {jobStatus === 'completed' && history && history.length > 0 && (
+              <div className="training-graph" style={{ marginTop: '20px', width: '100%', height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={history} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--clr-border)" />
+                    <XAxis dataKey="epoch" stroke="var(--clr-text-dim)" />
+                    <YAxis yAxisId="left" stroke="var(--clr-text-dim)" />
+                    <YAxis yAxisId="right" orientation="right" stroke="var(--clr-text-dim)" />
+                    <Tooltip contentStyle={{ backgroundColor: 'var(--clr-bg)', borderColor: 'var(--clr-border)', color: 'var(--clr-text)' }} />
+                    <Legend />
+                    <Line yAxisId="left" type="monotone" dataKey="train_loss" stroke="var(--clr-warning)" name="Loss" dot={false} strokeWidth={2} />
+                    <Line yAxisId="right" type="monotone" dataKey="val_acc" stroke="var(--clr-success)" name="Validation Acc (%)" dot={false} strokeWidth={2} />
+                    <Line yAxisId="right" type="monotone" dataKey="train_acc" stroke="var(--clr-accent)" name="Train Acc (%)" dot={false} strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             )}
 

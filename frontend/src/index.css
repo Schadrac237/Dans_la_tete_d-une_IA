@@ -200,9 +200,12 @@ body {
   border-radius: 100px;
 }
 
-/* Les panneaux ML occupent toute la largeur */
-.ml-panel {
-  grid-column: 1 / -1;
+.left-column {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
 }
 
 /* ── Section titre ──────────────────────────────────────────────────────────── */
@@ -272,7 +275,6 @@ body {
 
 /* ── VideoPanel ─────────────────────────────────────────────────────────────── */
 .video-panel {
-  grid-row: 2;
   display: flex;
   flex-direction: column;
   gap: var(--gap-md);

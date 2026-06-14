@@ -23,7 +23,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from webrtc_handler import handle_offer, close_all_connections, live_gradcam_config
+from webrtc_handler import handle_offer, close_all_connections, live_gradcam_config, custom_model_config
 from yolo_processor import yolo_processor
 from ml_stubs import (
     GradCAMRequest,
@@ -144,15 +144,31 @@ async def websocket_control(websocket: WebSocket):
 
                 elif msg_type == "set_live_gradcam":
                     live_gradcam_config.enabled = bool(msg.get("enabled", False))
-                    live_gradcam_config.layer_name = msg.get("layer", "model.model[21]")
+                    if live_gradcam_config.enabled:
+                        custom_model_config.enabled = False  # Exclusion mutuelle
+                    
                     tc = msg.get("targetClass")
                     live_gradcam_config.target_class = int(tc) if tc not in (None, "") else None
+                    
+                    ln = msg.get("layerName")
+                    if ln:
+                        live_gradcam_config.layer_name = ln
                     
                     await websocket.send_json({
                         "type": "ack_live_gradcam",
                         "enabled": live_gradcam_config.enabled
                     })
                     logger.info("Live Grad-CAM config mis à jour: %s", live_gradcam_config)
+
+                elif msg_type == "set_custom_model_mode":
+                    custom_model_config.enabled = bool(msg.get("enabled", False))
+                    if custom_model_config.enabled:
+                        live_gradcam_config.enabled = False  # Exclusion mutuelle
+                    await websocket.send_json({
+                        "type": "ack_custom_model",
+                        "enabled": custom_model_config.enabled
+                    })
+                    logger.info("Custom Model config mis à jour: %s", custom_model_config)
 
                 elif msg_type == "get_status":
                     await websocket.send_json({

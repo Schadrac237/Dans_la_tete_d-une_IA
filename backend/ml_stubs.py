@@ -86,6 +86,7 @@ class TrainStatusResponse(BaseModel):
     current_epoch: int
     total_epochs: int
     metrics: dict[str, Any]
+    history: list[dict[str, Any]] = Field(default_factory=list)
     message: str
     error: Optional[str] = None
 
@@ -154,6 +155,7 @@ async def get_training_status(job_id: str) -> TrainStatusResponse:
             current_epoch=0,
             total_epochs=0,
             metrics={},
+            history=[],
             message=f"Job '{job_id}' introuvable.",
             error=None,
         )
@@ -165,6 +167,7 @@ async def get_training_status(job_id: str) -> TrainStatusResponse:
         current_epoch=job.current_epoch,
         total_epochs=job.total_epochs,
         metrics=job.metrics,
+        history=getattr(job, "history", []),
         message=job.message,
         error=job.error,
     )

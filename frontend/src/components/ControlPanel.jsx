@@ -33,6 +33,8 @@ export function ControlPanel({
   confirmedConfidence,
   sendLiveGradCAMConfig,
   liveGradCAMStatus,
+  sendCustomModelMode,
+  customModelEnabled,
   isSessionActive,
 }) {
   const confidenceRef   = useRef(50)       // valeur locale non-réactive (perf)
@@ -232,6 +234,38 @@ export function ControlPanel({
         </div>
       </div>
 
+      {/* ── Bloc Mon Modèle (Transfer Learning) ───────────────────────── */}
+      <div className="control-block">
+        <h3 className="block-title">
+          <span>🧠 Mon Modèle (Transfer Learning)</span>
+        </h3>
+        
+        <label className="toggle-label" htmlFor="toggle-custom-model" style={{ marginBottom: '10px' }}>
+          <span>
+            <strong>Utiliser mon modèle CIFAR-10</strong>
+            <span className="toggle-desc">
+              Remplace YOLO par le dernier modèle ResNet entraîné en bas de page.
+            </span>
+          </span>
+          <div className="toggle-switch-wrapper">
+            <input
+              id="toggle-custom-model"
+              type="checkbox"
+              className="toggle-input"
+              checked={customModelEnabled}
+              onChange={(e) => {
+                if (!isSessionActive) {
+                  alert("Veuillez lancer la session vidéo d'abord.")
+                  return
+                }
+                sendCustomModelMode(e.target.checked)
+              }}
+              disabled={!isSessionActive}
+            />
+            <div className="toggle-switch" />
+          </div>
+        </label>
+      </div>
     </aside>
   )
 }

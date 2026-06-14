@@ -44,6 +44,12 @@ class LiveGradCAMConfig:
 
 live_gradcam_config = LiveGradCAMConfig()
 
+@dataclass
+class CustomModelConfig:
+    enabled: bool = False
+
+custom_model_config = CustomModelConfig()
+
 # ─── Ensemble des connexions actives (pour cleanup) ───────────────────────────
 active_connections: set[RTCPeerConnection] = set()
 
@@ -108,7 +114,14 @@ class VideoTransformTrack(MediaStreamTrack):
             # Inférence (YOLO classique ou Live Grad-CAM)
             loop = asyncio.get_running_loop()
             
-            if live_gradcam_config.enabled:
+            if custom_model_config.enabled:
+                from custom_model_processor import custom_model_processor
+                annotated_bgr = await loop.run_in_executor(
+                    None,
+                    custom_model_processor.process_frame,
+                    img_bgr
+                )
+            elif live_gradcam_config.enabled:
                 # ── Mode Live Grad-CAM ──
                 from gradcam import gradcam_processor
                 annotated_bgr = await loop.run_in_executor(

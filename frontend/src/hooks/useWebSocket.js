@@ -42,6 +42,7 @@ export function useWebSocket(enabled = false) {
     layer: 'model.model[21]',
     targetClass: null
   })
+  const [customModelEnabled, setCustomModelEnabled] = useState(false)
 
   // ── Connexion ────────────────────────────────────────────────────────────────
   const connect = useCallback(() => {
@@ -66,6 +67,7 @@ export function useWebSocket(enabled = false) {
         if (msg.type === 'ack' || msg.type === 'status') {
           if (msg.confidence !== undefined) setConfirmedConf(msg.confidence)
           if (msg.gradcam !== undefined) setLiveGradCAMStatus(msg.gradcam)
+          if (msg.custom_model !== undefined) setCustomModelEnabled(msg.custom_model)
         } else if (msg.type === 'error') {
           console.warn('[WS] Erreur backend :', msg.message)
         }
@@ -130,19 +132,40 @@ export function useWebSocket(enabled = false) {
   }, [])
 
   // ── Envoi de la config Grad-CAM ──────────────────────────────────────────────
-  const sendLiveGradCAMConfig = useCallback((enabled, layer, targetClass) => {
+  const sendLiveGradCAMConfig = useCallback((enabled, layerName = 'model.model[21]', targetClass = null) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'set_live_gradcam',
         enabled,
-        layer,
+        layerName,
         targetClass
       }))
-      setLiveGradCAMStatus({ enabled, layer, targetClass })
+      setLiveGradCAMStatus({ enabled, layer: layerName, targetClass })
     } else {
       console.warn('[WS] Impossible d\'envoyer : WebSocket non connecté')
     }
   }, [])
 
-  return { wsStatus, sendConfidence, confirmedConfidence, sendLiveGradCAMConfig, liveGradCAMStatus }
+  // ── Envoi du mode modèle personnalisé ────────────────────────────────────────
+  const sendCustomModelMode = useCallback((enabled) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'set_custom_model_mode',
+        enabled
+      }))
+      setCustomModelEnabled(enabled)
+    } else {
+      console.warn('[WS] Impossible d\'envoyer : WebSocket non connecté')
+    }
+  }, [])
+
+  return { 
+    wsStatus, 
+    sendConfidence, 
+    confirmedConfidence, 
+    sendLiveGradCAMConfig, 
+    liveGradCAMStatus,
+    sendCustomModelMode,
+    customModelEnabled
+  }
 }

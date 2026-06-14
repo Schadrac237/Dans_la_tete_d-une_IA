@@ -18,6 +18,7 @@ export function useTraining() {
   const [currentEpoch, setCurrentEpoch] = useState(0)
   const [totalEpochs, setTotalEpochs]   = useState(0)
   const [metrics, setMetrics]         = useState({})
+  const [history, setHistory]         = useState([])
   const [message, setMessage]         = useState('')
   const [error, setError]             = useState(null)
   const [loading, setLoading]         = useState(false)
@@ -46,6 +47,7 @@ export function useTraining() {
       setCurrentEpoch(data.current_epoch)
       setTotalEpochs(data.total_epochs)
       setMetrics(data.metrics ?? {})
+      setHistory(data.history ?? [])
       setMessage(data.message ?? '')
 
       if (data.status === 'failed') {
@@ -70,6 +72,7 @@ export function useTraining() {
     setProgress(0)
     setCurrentEpoch(0)
     setMetrics({})
+    setHistory([])
     setMessage('')
 
     try {
@@ -114,6 +117,7 @@ export function useTraining() {
     setCurrentEpoch(0)
     setTotalEpochs(0)
     setMetrics({})
+    setHistory([])
     setMessage('')
     setError(null)
     setEstimatedMinutes(null)
@@ -132,6 +136,7 @@ export function useTraining() {
     currentEpoch,
     totalEpochs,
     metrics,
+    history,
     message,
     error,
     loading,

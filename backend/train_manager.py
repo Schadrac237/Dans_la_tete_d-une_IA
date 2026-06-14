@@ -68,6 +68,7 @@ class TrainJob:
     current_epoch: int = 0
     total_epochs: int = 0
     metrics: dict[str, Any] = field(default_factory=dict)
+    history: list[dict[str, Any]] = field(default_factory=list)
     message: str = "En attente de démarrage…"
     error: Optional[str] = None
     created_at: float = field(default_factory=time.time)
@@ -249,12 +250,17 @@ def _run_training_subprocess(
             if job:
                 job.current_epoch = epoch
                 job.progress_percent = round(epoch / epochs * 100, 1)
-                job.metrics = {
+                
+                epoch_metrics = {
+                    "epoch": epoch,
                     "train_loss": round(train_loss, 4),
                     "train_acc": round(train_acc, 2),
                     "val_acc": round(val_acc, 2),
                     "learning_rate": round(scheduler.get_last_lr()[0], 6),
                 }
+                job.metrics = epoch_metrics
+                job.history.append(epoch_metrics)
+                
                 job.message = (
                     f"Epoch {epoch}/{epochs} — "
                     f"loss: {train_loss:.4f}  train_acc: {train_acc:.1f}%  val_acc: {val_acc:.1f}%"
@@ -328,3 +334,21 @@ def get_job_status(job_id: str) -> Optional[TrainJob]:
     Retourne None si le job n'existe pas.
     """
     return TrainJob.load(job_id)
+
+def get_latest_completed_job() -> Optional[TrainJob]:
+    """
+    Recherche dans JOBS_DIR le job 'completed' le plus récent.
+    """
+    latest_job = None
+    latest_time = 0.0
+    for file in JOBS_DIR.glob("*.json"):
+        try:
+            data = json.loads(file.read_text())
+            if data.get("status") == "completed":
+                updated_at = data.get("updated_at", 0)
+                if updated_at > latest_time:
+                    latest_time = updated_at
+                    latest_job = TrainJob(**data)
+        except Exception:
+            continue
+    return latest_job

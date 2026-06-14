@@ -36,7 +36,7 @@ export default function App() {
 
   const isSessionActive = status === 'connected'
 
-  const { wsStatus, sendConfidence, confirmedConfidence, sendLiveGradCAMConfig, liveGradCAMStatus } = useWebSocket(isSessionActive)
+  const { wsStatus, sendConfidence, confirmedConfidence, sendLiveGradCAMConfig, liveGradCAMStatus, sendCustomModelMode, customModelEnabled } = useWebSocket(isSessionActive)
 
   const statusInfo = STATUS_DISPLAY[status] || STATUS_DISPLAY.idle
 
@@ -75,15 +75,31 @@ export default function App() {
           </div>
         </div>
 
-        {/* Panneau vidéo */}
-        <VideoPanel
-          localVideoRef={localVideoRef}
-          remoteVideoRef={remoteVideoRef}
-          status={status}
-          errorMessage={errorMessage}
-          onStart={startSession}
-          onStop={stopSession}
-        />
+        {/* Colonne gauche (Video + Training) */}
+        <div className="left-column">
+          {/* Panneau vidéo */}
+          <VideoPanel
+            localVideoRef={localVideoRef}
+            remoteVideoRef={remoteVideoRef}
+            status={status}
+            errorMessage={errorMessage}
+            onStart={startSession}
+            onStop={stopSession}
+          />
+
+          {/* ── Séparateur ML ────────────────────────────────────────────────── */}
+          <div className="ml-section-header" style={{ gridColumn: 'unset' }}>
+            <div className="ml-section-line" />
+            <span className="ml-section-label">🔬 Outils d'analyse IA</span>
+            <div className="ml-section-line" />
+          </div>
+
+          {/* Panneau Transfer Learning */}
+          <TrainingPanel
+            onStartTraining={startTraining}
+            trainingStatus={trainingStatus}
+          />
+        </div>
 
         {/* Panneau de contrôle */}
         <ControlPanel
@@ -92,20 +108,9 @@ export default function App() {
           confirmedConfidence={confirmedConfidence}
           sendLiveGradCAMConfig={sendLiveGradCAMConfig}
           liveGradCAMStatus={liveGradCAMStatus}
+          sendCustomModelMode={sendCustomModelMode}
+          customModelEnabled={customModelEnabled}
           isSessionActive={isSessionActive}
-        />
-
-        {/* ── Séparateur ML ────────────────────────────────────────────────── */}
-        <div className="ml-section-header">
-          <div className="ml-section-line" />
-          <span className="ml-section-label">🔬 Outils d'analyse IA</span>
-          <div className="ml-section-line" />
-        </div>
-
-        {/* Panneau Transfer Learning */}
-        <TrainingPanel
-          onStartTraining={startTraining}
-          trainingStatus={trainingStatus}
         />
 
       </main>
