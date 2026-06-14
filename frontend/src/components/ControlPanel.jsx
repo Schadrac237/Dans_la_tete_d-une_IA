@@ -3,19 +3,36 @@
  * ─────────────────
  * Panneau de contrôle droit :
  *   - Slider de seuil de confiance YOLO (envoyé en temps réel via WebSocket)
- *   - Métriques en direct (latence estimée, objets détectés, état WS)
- *   - Liste des dernières détections
- *   - Sections stubs pour les fonctionnalités futures
+ *   - Statut WebSocket
  */
 
 import React, { useCallback, useRef } from 'react'
 
 const DEBOUNCE_MS = 80   // évite de spammer le WS à chaque pixel de slider
 
+const YOLO_LAYERS = [
+  { value: 'model.model[21]', label: 'Dernière couche C2f' },
+  { value: 'model.model[18]', label: 'Neck — C2f 18' },
+]
+
+const COCO_CLASSES = [
+  'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
+  'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
+  'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+  'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
+  'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+  'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+  'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
+  'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
+  'hair drier', 'toothbrush'
+]
+
 export function ControlPanel({
   wsStatus,
   sendConfidence,
   confirmedConfidence,
+  sendLiveGradCAMConfig,
+  liveGradCAMStatus,
   isSessionActive,
 }) {
   const confidenceRef   = useRef(50)       // valeur locale non-réactive (perf)
@@ -117,50 +134,104 @@ export function ControlPanel({
         </div>
       </div>
 
-      {/* ── Fonctionnalités à venir ─────────────────────────────────────────── */}
+      {/* ── Mode Live Grad-CAM ──────────────────────────────────────────────── */}
       <div className="card">
         <div className="card-header">
           <span className="card-title">
-            <span className="icon">🔬</span> Prochainement
+            <span className="icon">🔥</span> Live Grad-CAM
           </span>
         </div>
-        <div className="stub-section">
-          <StubBadge
-            icon="🌡️"
-            label="Grad-CAM"
-            desc="Visualisation des zones d'attention du réseau de neurones sur l'image"
-            endpoint="POST /api/gradcam"
-          />
-          <StubBadge
-            icon="🏋️"
-            label="Transfer Learning"
-            desc="Entraîner YOLOv8n sur vos propres données directement dans l'interface"
-            endpoint="POST /api/train"
-          />
+        <div className="control-section">
+          <div className="toggle-row" style={{ marginBottom: 'var(--gap-sm)', background: 'transparent', padding: 0, border: 'none' }}>
+            <label className="toggle-label" htmlFor="live-gradcam-toggle" style={{ width: '100%' }}>
+              <span>
+                <strong>Activer le rendu en direct</strong>
+                <span className="toggle-desc">Remplace la détection standard par la Heatmap Grad-CAM via GPU.</span>
+              </span>
+              <div className="toggle-switch-wrapper">
+                <input
+                  id="live-gradcam-toggle"
+                  type="checkbox"
+                  className="toggle-input"
+                  checked={liveGradCAMStatus?.enabled || false}
+                  onChange={e => sendLiveGradCAMConfig(e.target.checked, liveGradCAMStatus?.layer || 'model.model[21]', liveGradCAMStatus?.targetClass)}
+                  disabled={!isSessionActive}
+                />
+                <div className="toggle-switch" />
+              </div>
+            </label>
+          </div>
+
+          {liveGradCAMStatus?.enabled && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-xs)', marginTop: 'var(--gap-md)' }}>
+              <div className="select-group">
+                <label className="select-label" style={{ fontSize: '0.65rem' }}>Couche</label>
+                <select
+                  className="styled-select"
+                  style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                  value={liveGradCAMStatus.layer}
+                  onChange={e => sendLiveGradCAMConfig(true, e.target.value, liveGradCAMStatus.targetClass)}
+                >
+                  {YOLO_LAYERS.map(l => (
+                    <option key={l.value} value={l.value}>{l.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="select-group">
+                <label className="select-label" style={{ fontSize: '0.65rem' }}>Classe cible</label>
+                <select
+                  className="styled-select"
+                  style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                  value={liveGradCAMStatus.targetClass === null ? '' : liveGradCAMStatus.targetClass}
+                  onChange={e => sendLiveGradCAMConfig(true, liveGradCAMStatus.layer, e.target.value === '' ? null : e.target.value)}
+                >
+                  <option value="">🔍 Auto (max)</option>
+                  {COCO_CLASSES.map((c, i) => (
+                    <option key={i} value={i}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Infos modèle ────────────────────────────────────────────────────── */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">
+            <span className="icon">🤖</span> Modèles actifs
+          </span>
+        </div>
+        <div className="models-info-section">
+          <div className="model-info-item">
+            <span className="model-info-icon">⚡</span>
+            <div>
+              <div className="model-info-name">YOLOv8n ONNX</div>
+              <div className="model-info-desc">Détection temps réel · WebRTC · CPU</div>
+            </div>
+            <span className="model-info-badge live">live</span>
+          </div>
+          <div className="model-info-item">
+            <span className="model-info-icon">🌡️</span>
+            <div>
+              <div className="model-info-name">YOLOv8n PyTorch</div>
+              <div className="model-info-desc">Grad-CAM · chargement à la demande</div>
+            </div>
+            <span className="model-info-badge lazy">lazy</span>
+          </div>
+          <div className="model-info-item">
+            <span className="model-info-icon">🏋️</span>
+            <div>
+              <div className="model-info-name">ResNet-18/50</div>
+              <div className="model-info-desc">Transfer Learning · CIFAR-10</div>
+            </div>
+            <span className="model-info-badge train">train</span>
+          </div>
         </div>
       </div>
 
     </aside>
-  )
-}
-
-// ── Composant stub badge ──────────────────────────────────────────────────────
-function StubBadge({ icon, label, desc, endpoint }) {
-  return (
-    <div className="stub-badge" title={`Route disponible : ${endpoint}`}>
-      <span className="stub-icon">{icon}</span>
-      <div>
-        <div className="stub-label">{label}</div>
-        <div className="stub-desc">{desc}</div>
-        <div style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.62rem',
-          color: 'var(--clr-text-dim)',
-          marginTop: '3px',
-        }}>
-          {endpoint} · stub
-        </div>
-      </div>
-    </div>
   )
 }

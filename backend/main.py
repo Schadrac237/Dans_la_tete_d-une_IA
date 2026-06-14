@@ -23,7 +23,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from webrtc_handler import handle_offer, close_all_connections
+from webrtc_handler import handle_offer, close_all_connections, live_gradcam_config
 from yolo_processor import yolo_processor
 from ml_stubs import (
     GradCAMRequest,
@@ -142,11 +142,28 @@ async def websocket_control(websocket: WebSocket):
                     })
                     logger.info("Seuil mis à jour → %.2f", yolo_processor.config.conf)
 
+                elif msg_type == "set_live_gradcam":
+                    live_gradcam_config.enabled = bool(msg.get("enabled", False))
+                    live_gradcam_config.layer_name = msg.get("layer", "model.model[21]")
+                    tc = msg.get("targetClass")
+                    live_gradcam_config.target_class = int(tc) if tc not in (None, "") else None
+                    
+                    await websocket.send_json({
+                        "type": "ack_live_gradcam",
+                        "enabled": live_gradcam_config.enabled
+                    })
+                    logger.info("Live Grad-CAM config mis à jour: %s", live_gradcam_config)
+
                 elif msg_type == "get_status":
                     await websocket.send_json({
                         "type": "status",
                         "confidence": yolo_processor.config.conf,
                         "yolo_loaded": yolo_processor._loaded,
+                        "live_gradcam": {
+                            "enabled": live_gradcam_config.enabled,
+                            "layer": live_gradcam_config.layer_name,
+                            "targetClass": live_gradcam_config.target_class,
+                        }
                     })
 
                 else:

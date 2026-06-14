@@ -26,6 +26,8 @@ const RETRY_BASE_MS   = 1000   // délai initial de reconnexion
  *   wsStatus: WSStatus,
  *   sendConfidence: (value: number) => void,
  *   confirmedConfidence: number | null,
+ *   sendLiveGradCAMConfig: (enabled: boolean, layer: string, targetClass: number|null) => void,
+ *   liveGradCAMStatus: { enabled: boolean, layer: string, targetClass: number|null }
  * }}
  */
 export function useWebSocket(enabled = false) {
@@ -35,6 +37,11 @@ export function useWebSocket(enabled = false) {
 
   const [wsStatus, setWsStatus]                   = useState('disconnected')
   const [confirmedConfidence, setConfirmedConf]   = useState(null)
+  const [liveGradCAMStatus, setLiveGradCAMStatus] = useState({
+    enabled: false,
+    layer: 'model.model[21]',
+    targetClass: null
+  })
 
   // ── Connexion ────────────────────────────────────────────────────────────────
   const connect = useCallback(() => {
@@ -57,7 +64,8 @@ export function useWebSocket(enabled = false) {
       try {
         const msg = JSON.parse(event.data)
         if (msg.type === 'ack' || msg.type === 'status') {
-          setConfirmedConf(msg.confidence)
+          if (msg.confidence !== undefined) setConfirmedConf(msg.confidence)
+          if (msg.gradcam !== undefined) setLiveGradCAMStatus(msg.gradcam)
         } else if (msg.type === 'error') {
           console.warn('[WS] Erreur backend :', msg.message)
         }
@@ -121,5 +129,20 @@ export function useWebSocket(enabled = false) {
     }
   }, [])
 
-  return { wsStatus, sendConfidence, confirmedConfidence }
+  // ── Envoi de la config Grad-CAM ──────────────────────────────────────────────
+  const sendLiveGradCAMConfig = useCallback((enabled, layer, targetClass) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'set_live_gradcam',
+        enabled,
+        layer,
+        targetClass
+      }))
+      setLiveGradCAMStatus({ enabled, layer, targetClass })
+    } else {
+      console.warn('[WS] Impossible d\'envoyer : WebSocket non connecté')
+    }
+  }, [])
+
+  return { wsStatus, sendConfidence, confirmedConfidence, sendLiveGradCAMConfig, liveGradCAMStatus }
 }

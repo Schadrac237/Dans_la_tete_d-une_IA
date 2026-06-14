@@ -1,139 +1,170 @@
 """
 ml_stubs.py
 ────────────
-Stubs propres pour les fonctionnalités ML avancées à venir :
-  - Grad-CAM (visualisation des features maps)
-  - Transfer Learning / Entraînement interactif
-
-Ces endpoints retournent des réponses structurées avec statut
-"not_implemented" pour ne pas casser le frontend.
+Schémas Pydantic + wiring vers les implémentations réelles :
+  - Grad-CAM  → gradcam.py
+  - Training  → train_manager.py (ResNet18/50 + CIFAR-10)
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 
-# ─── Schémas Pydantic ─────────────────────────────────────────────────────────
+# ─── Schémas Pydantic — Grad-CAM ─────────────────────────────────────────────
 
 class GradCAMRequest(BaseModel):
     """Requête Grad-CAM : une image base64 + classe cible optionnelle."""
     image_b64: str = Field(..., description="Image encodée en base64 (JPEG ou PNG)")
-    target_class: int | None = Field(
+    target_class: Optional[int] = Field(
         None, description="Indice de classe COCO ciblé (None = classe la plus probable)"
     )
     layer_name: str = Field(
-        "model.22",
-        description="Nom de la couche YOLO à visualiser (ex: model.22 pour la tête de détection)"
+        "model.model[21]",
+        description=(
+            "Couche YOLO à visualiser. "
+            "Options : model.model[21] (recommandé), model.model[18], "
+            "model.model[9] (backbone-C2f9), model.model[6] (backbone-C2f6)"
+        ),
     )
 
 
 class GradCAMResponse(BaseModel):
     status: str
-    heatmap_b64: str | None = None
-    target_class: int | None = None
-    class_label: str | None = None
+    heatmap_b64: Optional[str] = None
+    target_class: Optional[int] = None
+    class_label: Optional[str] = None
     message: str
 
 
+# ─── Schémas Pydantic — Transfer Learning (CIFAR-10 + ResNet) ────────────────
+
 class TrainRequest(BaseModel):
-    """Requête d'entraînement interactif."""
-    dataset_path: str = Field(..., description="Chemin vers le dataset YOLO (format ultralytics)")
-    epochs: int = Field(10, ge=1, le=100, description="Nombre d'époques")
-    base_model: str = Field("yolov8n.pt", description="Modèle de base pour le Transfer Learning")
-    learning_rate: float = Field(0.001, ge=1e-6, le=0.1)
-    freeze_backbone: bool = Field(True, description="Geler le backbone (Transfer Learning standard)")
+    """Requête d'entraînement — ResNet fine-tuné sur CIFAR-10 (download auto)."""
+    base_model: Literal["resnet18", "resnet50"] = Field(
+        "resnet18",
+        description="Architecture de base : resnet18 (rapide) ou resnet50 (plus précis)",
+    )
+    epochs: int = Field(
+        5, ge=1, le=50,
+        description="Nombre d'époques (1–50). Recommandé : 5–10 en mode freeze.",
+    )
+    learning_rate: float = Field(
+        0.001, ge=1e-6, le=0.1,
+        description="Taux d'apprentissage SGD",
+    )
+    freeze_backbone: bool = Field(
+        True,
+        description=(
+            "True = geler le backbone, entraîner seulement la tête FC "
+            "(Transfer Learning classique, rapide). "
+            "False = fine-tuning complet (lent mais plus précis)."
+        ),
+    )
+    batch_size: int = Field(
+        64, ge=8, le=256,
+        description="Taille des mini-batches",
+    )
 
 
 class TrainResponse(BaseModel):
     status: str
-    job_id: str | None = None
+    job_id: Optional[str] = None
     message: str
-    estimated_duration_minutes: float | None = None
+    estimated_duration_minutes: Optional[float] = None
 
 
 class TrainStatusResponse(BaseModel):
     job_id: str
-    status: str  # "queued" | "running" | "completed" | "failed"
+    status: str          # queued | running | completed | failed
     progress_percent: float
     current_epoch: int
     total_epochs: int
     metrics: dict[str, Any]
     message: str
+    error: Optional[str] = None
 
 
-# ─── Logique des stubs ────────────────────────────────────────────────────────
+# ─── Handlers ────────────────────────────────────────────────────────────────
 
 async def run_gradcam(request: GradCAMRequest) -> GradCAMResponse:
-    """
-    TODO: Implémenter Grad-CAM avec PyTorch hooks sur YOLOv8n.
+    """Délègue au GradCAMProcessor (gradcam.py)."""
+    from gradcam import gradcam_processor
 
-    Approche recommandée :
-      1. Décoder l'image base64 → tensor PyTorch
-      2. Enregistrer un forward hook sur `request.layer_name`
-      3. Enregistrer un backward hook pour capturer les gradients
-      4. Forward pass → backprop sur le score de `target_class`
-      5. Pondérer la feature map par les gradients moyennés
-      6. Appliquer ReLU + normalisation + resize → heatmap
-      7. Superposer avec l'image originale via cv2.applyColorMap
-      8. Encoder le résultat en base64 et retourner
-    """
-    logger.info("Grad-CAM demandé — stub actif (non implémenté)")
-    return GradCAMResponse(
-        status="not_implemented",
-        heatmap_b64=None,
+    logger.info("Grad-CAM demandé — couche: %s  classe: %s",
+                request.layer_name, request.target_class)
+    result = gradcam_processor.compute(
+        image_b64=request.image_b64,
         target_class=request.target_class,
-        class_label=None,
-        message=(
-            "Grad-CAM n'est pas encore implémenté. "
-            "Cette route est un placeholder structuré pour la prochaine itération. "
-            "Voir ml_stubs.py::run_gradcam() pour le guide d'implémentation."
-        ),
+        layer_name=request.layer_name,
     )
+    return GradCAMResponse(**result)
 
 
 async def start_training(request: TrainRequest) -> TrainResponse:
-    """
-    TODO: Implémenter l'entraînement interactif avec Ultralytics.
+    """Démarre un job d'entraînement ResNet+CIFAR-10 en arrière-plan."""
+    from train_manager import start_training_job
 
-    Approche recommandée :
-      1. Valider le dataset (vérifier le fichier data.yaml)
-      2. Créer un job_id unique (uuid4)
-      3. Lancer model.train() dans un ProcessPoolExecutor
-         pour ne pas bloquer le serveur FastAPI
-      4. Stocker l'état dans un dict {job_id: TrainState}
-      5. Utiliser les callbacks Ultralytics (on_epoch_end) pour
-         mettre à jour la progression en temps réel
-      6. Retourner le job_id pour polling via GET /api/train/{job_id}
-    """
-    logger.info("Entraînement demandé — stub actif (non implémenté)")
+    logger.info(
+        "Entraînement demandé — modèle: %s  epochs: %d  lr: %.6f  freeze: %s",
+        request.base_model, request.epochs, request.learning_rate, request.freeze_backbone,
+    )
+
+    # Estimation grossière du temps (CPU) : ~2 min/epoch resnet18 freeze, ~8 min resnet50 full
+    if request.freeze_backbone:
+        est_min = request.epochs * (1.5 if request.base_model == "resnet18" else 3.0)
+    else:
+        est_min = request.epochs * (4.0 if request.base_model == "resnet18" else 8.0)
+
+    job_id = await start_training_job(
+        base_model=request.base_model,
+        epochs=request.epochs,
+        learning_rate=request.learning_rate,
+        freeze_backbone=request.freeze_backbone,
+        batch_size=request.batch_size,
+    )
+
     return TrainResponse(
-        status="not_implemented",
-        job_id=None,
+        status="started",
+        job_id=job_id,
         message=(
-            "L'entraînement interactif n'est pas encore implémenté. "
-            "Voir ml_stubs.py::start_training() pour le guide d'implémentation."
+            f"Job d'entraînement démarré — {request.base_model} sur CIFAR-10 "
+            f"({request.epochs} epochs). Poll GET /api/train/{job_id} pour suivre."
         ),
-        estimated_duration_minutes=None,
+        estimated_duration_minutes=round(est_min, 1),
     )
 
 
 async def get_training_status(job_id: str) -> TrainStatusResponse:
-    """
-    TODO: Retourner l'état en temps réel d'un job d'entraînement.
-    """
-    logger.info("Statut entraînement %s demandé — stub actif", job_id)
+    """Retourne le statut en temps réel d'un job."""
+    from train_manager import get_job_status
+
+    job = get_job_status(job_id)
+
+    if job is None:
+        return TrainStatusResponse(
+            job_id=job_id,
+            status="not_found",
+            progress_percent=0.0,
+            current_epoch=0,
+            total_epochs=0,
+            metrics={},
+            message=f"Job '{job_id}' introuvable.",
+            error=None,
+        )
+
     return TrainStatusResponse(
-        job_id=job_id,
-        status="not_found",
-        progress_percent=0.0,
-        current_epoch=0,
-        total_epochs=0,
-        metrics={},
-        message=f"Job '{job_id}' introuvable — entraînement non implémenté.",
+        job_id=job.job_id,
+        status=job.status,
+        progress_percent=job.progress_percent,
+        current_epoch=job.current_epoch,
+        total_epochs=job.total_epochs,
+        metrics=job.metrics,
+        message=job.message,
+        error=job.error,
     )

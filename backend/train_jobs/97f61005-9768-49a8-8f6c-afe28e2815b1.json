@@ -1,0 +1,12 @@
+{
+  "job_id": "97f61005-9768-49a8-8f6c-afe28e2815b1",
+  "status": "failed",
+  "progress_percent": 0.0,
+  "current_epoch": 0,
+  "total_epochs": 5,
+  "metrics": {},
+  "message": "Erreur d'entra\u00eenement : Cannot re-initialize CUDA in forked subprocess. To use CUDA with multiprocessing, you must use the 'spawn' start method",
+  "error": "Cannot re-initialize CUDA in forked subprocess. To use CUDA with multiprocessing, you must use the 'spawn' start method",
+  "created_at": 1781445838.6201,
+  "updated_at": 1781445880.863207
+}

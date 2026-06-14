@@ -17,7 +17,10 @@ import time
 from fractions import Fraction
 
 import av
+from dataclasses import dataclass
+from typing import Optional
 import numpy as np
+
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaBlackhole
 
@@ -32,6 +35,15 @@ cv2.setNumThreads(0)                        # 3. désactiver threading OMP d'Ope
 
 logger = logging.getLogger(__name__)
 
+# ─── Configuration Live Grad-CAM ─────────────────────────────────────────────
+@dataclass
+class LiveGradCAMConfig:
+    enabled: bool = False
+    target_class: Optional[int] = None
+    layer_name: str = "model.model[21]"
+
+live_gradcam_config = LiveGradCAMConfig()
+
 # ─── Ensemble des connexions actives (pour cleanup) ───────────────────────────
 active_connections: set[RTCPeerConnection] = set()
 
@@ -41,9 +53,10 @@ class VideoTransformTrack(MediaStreamTrack):
     """
     Prend un MediaStreamTrack vidéo entrant et produit un flux annoté par YOLO.
 
-    Optimisation anti-latence : si une inférence YOLO est déjà en cours,
-    la frame courante est renvoyée brute (frame skipping) plutôt que
-    d'accumuler un retard en file d'attente.
+    Optimisation anti-latence : On utilise une tâche en arrière-plan pour
+    consommer le flux vidéo entrant aussi vite que possible. Si l'inférence YOLO
+    est plus lente que la webcam, on écrase les vieilles frames pour toujours
+    traiter la frame la plus récente. C'est le vrai "frame skipping".
     """
 
     kind = "video"
@@ -55,11 +68,29 @@ class VideoTransformTrack(MediaStreamTrack):
         self._fps_count = 0
         self._last_fps_time = time.monotonic()
         self._fps = 0.0
-        self._processing = False   # Verrou logique anti-accumulation de latence
+        
+        # File d'attente pour la dernière frame (maxsize=1)
+        self._queue = asyncio.Queue(maxsize=1)
+        self._consume_task = asyncio.create_task(self._consume_loop())
+
+    async def _consume_loop(self):
+        """Vide le buffer WebRTC entrant en continu pour éviter la latence."""
+        try:
+            while True:
+                frame = await self._track.recv()
+                # S'il y a déjà une frame non traitée, on la jette (frame drop)
+                if self._queue.full():
+                    try:
+                        self._queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                self._queue.put_nowait(frame)
+        except Exception:
+            pass # Piste fermée ou erreur réseau
 
     async def recv(self) -> av.VideoFrame:
-        # Recevoir la prochaine frame depuis le client
-        frame: av.VideoFrame = await self._track.recv()
+        # Bloque jusqu'à avoir une frame fraîche
+        frame: av.VideoFrame = await self._queue.get()
 
         # ── Calcul FPS ────────────────────────────────────────────────────────
         self._fps_count += 1
@@ -70,24 +101,30 @@ class VideoTransformTrack(MediaStreamTrack):
             self._fps_count = 0
             self._last_fps_time = now
 
-        # ── Frame skipping : évite l'accumulation de latence ──────────────────
-        # Si YOLO tourne déjà (inférence ~30-80ms sur CPU), on renvoie la frame
-        # brute immédiatement plutôt que de créer une file d'attente.
-        if self._processing:
-            return frame
-
-        self._processing = True
         try:
             # av.VideoFrame → numpy BGR
             img_bgr: np.ndarray = frame.to_ndarray(format="bgr24")
 
-            # Inférence YOLO dans le thread pool (non-bloquant pour asyncio)
-            loop = asyncio.get_running_loop()   # ← fix bug 4 (get_event_loop déprécié)
-            annotated_bgr, _ = await loop.run_in_executor(
-                None, yolo_processor.process_frame, img_bgr
-            )
+            # Inférence (YOLO classique ou Live Grad-CAM)
+            loop = asyncio.get_running_loop()
+            
+            if live_gradcam_config.enabled:
+                # ── Mode Live Grad-CAM ──
+                from gradcam import gradcam_processor
+                annotated_bgr = await loop.run_in_executor(
+                    None,
+                    gradcam_processor.compute_live,
+                    img_bgr,
+                    live_gradcam_config.target_class,
+                    live_gradcam_config.layer_name
+                )
+            else:
+                # ── Mode YOLO Détection standard ──
+                annotated_bgr, _ = await loop.run_in_executor(
+                    None, yolo_processor.process_frame, img_bgr
+                )
 
-            # HUD FPS (OpenCV importé au niveau module, pas ici)
+            # HUD FPS
             cv2.putText(
                 annotated_bgr,
                 f"FPS: {self._fps:.1f}",
@@ -102,10 +139,7 @@ class VideoTransformTrack(MediaStreamTrack):
             # numpy BGR → av.VideoFrame
             new_frame = av.VideoFrame.from_ndarray(annotated_bgr, format="bgr24")
 
-            # ── Fix bug 5 : pts peut être None (crash encodeur) ────────────────
-            # On copie les timestamps de la frame source si disponibles,
-            # sinon on utilise un compteur avec une time_base fixe à 90kHz
-            # (standard RTP video).
+            # On copie les timestamps de la frame source
             if frame.pts is not None:
                 new_frame.pts = frame.pts
                 new_frame.time_base = frame.time_base
@@ -115,16 +149,15 @@ class VideoTransformTrack(MediaStreamTrack):
                 new_frame.time_base = Fraction(1, 90000)
 
         except Exception as exc:
-            # Log complet (pas juste warning) pour déboguer
-            logger.error(
-                "Erreur VideoTransformTrack.recv() : %s", exc, exc_info=True
-            )
+            logger.error("Erreur VideoTransformTrack.recv() : %s", exc, exc_info=True)
             new_frame = frame   # Fallback : frame brute sans annotation
 
-        finally:
-            self._processing = False
-
         return new_frame
+
+    def stop(self):
+        super().stop()
+        if self._consume_task:
+            self._consume_task.cancel()
 
 
 # ─── Gestionnaire d'offre SDP ────────────────────────────────────────────────

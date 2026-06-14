@@ -1,15 +1,17 @@
 /**
  * App.jsx
  * ────────
- * Composant racine — assemble VideoPanel + ControlPanel
+ * Composant racine — assemble VideoPanel + ControlPanel + GradCAMPanel + TrainingPanel
  * et orchestre les hooks useWebRTC et useWebSocket.
  */
 
 import React from 'react'
 import { useWebRTC }    from './hooks/useWebRTC'
 import { useWebSocket } from './hooks/useWebSocket'
+import { useTraining }  from './hooks/useTraining'
 import { VideoPanel }   from './components/VideoPanel'
 import { ControlPanel } from './components/ControlPanel'
+import { TrainingPanel } from './components/TrainingPanel'
 
 const STATUS_DISPLAY = {
   idle:              { label: 'Prêt',             dot: '' },
@@ -30,9 +32,11 @@ export default function App() {
     stopSession,
   } = useWebRTC()
 
+  const { startTraining, trainingStatus } = useTraining()
+
   const isSessionActive = status === 'connected'
 
-  const { wsStatus, sendConfidence, confirmedConfidence } = useWebSocket(isSessionActive)
+  const { wsStatus, sendConfidence, confirmedConfidence, sendLiveGradCAMConfig, liveGradCAMStatus } = useWebSocket(isSessionActive)
 
   const statusInfo = STATUS_DISPLAY[status] || STATUS_DISPLAY.idle
 
@@ -45,7 +49,7 @@ export default function App() {
           <div className="header-logo-icon" aria-hidden="true">🧠</div>
           <div>
             <div className="header-title">Dans la tête d'une IA</div>
-            <div className="header-subtitle">YOLOv8n · WebRTC · FastAPI · Real-Time</div>
+            <div className="header-subtitle">YOLOv8n · ResNet · WebRTC · FastAPI · Real-Time</div>
           </div>
         </div>
 
@@ -86,14 +90,29 @@ export default function App() {
           wsStatus={wsStatus}
           sendConfidence={sendConfidence}
           confirmedConfidence={confirmedConfidence}
+          sendLiveGradCAMConfig={sendLiveGradCAMConfig}
+          liveGradCAMStatus={liveGradCAMStatus}
           isSessionActive={isSessionActive}
+        />
+
+        {/* ── Séparateur ML ────────────────────────────────────────────────── */}
+        <div className="ml-section-header">
+          <div className="ml-section-line" />
+          <span className="ml-section-label">🔬 Outils d'analyse IA</span>
+          <div className="ml-section-line" />
+        </div>
+
+        {/* Panneau Transfer Learning */}
+        <TrainingPanel
+          onStartTraining={startTraining}
+          trainingStatus={trainingStatus}
         />
 
       </main>
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <footer className="app-footer" role="contentinfo">
-        Dans la tête d'une IA · MVP v1.0 · YOLOv8n + aiortc + FastAPI + React
+        Dans la tête d'une IA · v2.0 · YOLOv8n + ResNet18 + CIFAR-10 + aiortc + FastAPI + React
       </footer>
 
     </div>

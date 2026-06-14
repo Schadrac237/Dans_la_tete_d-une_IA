@@ -2,13 +2,17 @@
 
 Une application web interactive permettant de visualiser et de comprendre le fonctionnement d'une IA en temps réel.
 
+## Fonctionnalités Principales
+
+- **Détection temps réel (YOLOv8)** : Streaming vidéo via **WebRTC** avec une latence quasi-nulle grâce à un système de frame-skipping dynamique.
+- **Live Grad-CAM (GPU)** : Visualisation de l'attention de l'IA (Heatmaps) superposée en direct sur la webcam pour ouvrir la "boîte noire", calculé sur carte graphique.
+- **Transfer Learning (ResNet)** : Entraînement interactif d'un modèle ResNet (18/50) sur le dataset CIFAR-10, exécuté dans un processus isolé (multiprocessing spawn) pour ne pas bloquer l'interface.
+
 ## Structure du projet
 
 Ce projet est structuré en deux parties :
-- **`frontend/`** : Interface utilisateur développée avec React et Vite.
-- **`backend/`** : Serveur en Python (gérant la logique, les modèles d'IA, etc.).
-
----
+- **`frontend/`** : Interface utilisateur développée avec React et Vite (Hooks WebRTC, WebSockets, Composants dynamiques).
+- **`backend/`** : Serveur asynchrone en Python (FastAPI, PyTorch, aiortc, OpenCV).
 
 ## Prérequis
 
